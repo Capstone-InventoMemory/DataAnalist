@@ -1,48 +1,42 @@
 import pandas as pd
 
-monthly_df = pd.read_csv('Monthly_InventoryData.csv', encoding='cp949')
-inventory_df = pd.read_csv('InventoryData.csv', encoding='cp949')
+# 월별 데이터와 재고 데이터를 읽어옵니다.
+def predict_sale(inventory_df):
+    # 월별 데이터를 불러오기
+    monthly_df = pd.read_csv('Monthly_InventoryData.csv', encoding='cp949')
+    monthly_df.columns = monthly_df.columns.str.strip().str.lower()  # 열 이름 정리
+    inventory_df.columns = [
+        'item', 'incomingstock', 'outcomingstock', 'currentstock', 
+        'incomingdate', 'currentoutcomingdate', 'leadtime', 
+        'predictedsale', 'expectedusage', 'stddev', 
+        'safestock', 'totalrequiredstock', 'servicelevel'
+    ]
+    inventory_df['item'] = inventory_df['item'].str.strip().str.lower()
 
-monthly_df.columns = monthly_df.columns.str.strip().str.lower() 
-inventory_df.columns = [
-    'item', 'incomingStock', 'outcomingStock', 'currentStock', 
-    'incomingDate', 'currentoutcomingDate', 'leadTime', 
-    'predictedSale', 'expectedUsage', 'stdDev', 
-    'safeStock', 'totalRequiredStock', 'serviceLevel'
-]
-inventory_df['item'] = inventory_df['item'].str.strip().str.lower()  
+    # 판매 예측을 계산하는 함수
+    def predict_sale_for_item(monthlyData):
+        if isinstance(monthlyData, pd.DataFrame):
+            monthlyData = monthlyData.values.flatten()  # 2차원 배열을 1차원으로 평탄화
 
-##print("Monthly Data Columns:", monthly_df.columns.tolist())
-
-def PredictSale(monthlyData):
-    totalSales = monthlyData.sum() 
-    daysInMonth = len(monthlyData) 
-    return totalSales / daysInMonth if daysInMonth > 0 else 0 
-
-for index, row in inventory_df.iterrows():
-    itemName = row['item']
-    
-    if itemName in monthly_df.columns:
-        monthlyData = monthly_df[itemName]  
-
-        ##print(f"Processing item: {itemName}")
-        ##print(f"Monthly data found: {monthlyData.values}")
-
-        if monthlyData is not None and not monthlyData.empty:
+        # 데이터를 숫자로 변환하고, 변환할 수 없는 값은 NaN으로 처리한 후 NaN을 0으로 변경
+        monthlyData = pd.to_numeric(monthlyData, errors='coerce')
         
-            predictedSale = PredictSale(monthlyData.values)
-            inventory_df.at[index, 'predictedSale'] = round(predictedSale)  
-        else:
+        totalSales = monthlyData.sum()  # 월간 판매량 합계
+        daysInMonth = len(monthlyData)  # 한 달 동안의 일수
+
+        return totalSales / daysInMonth if daysInMonth > 0 else 0 
+
+    # 각 재고 항목에 대해 예측된 판매량을 계산
+    for index, row in inventory_df.iterrows():
+        itemName = row['item']
         
-            inventory_df.at[index, 'predictedSale'] = 0
+        if itemName in monthly_df.columns:
+            monthlyData = monthly_df[itemName]  # 해당 항목의 월별 데이터를 가져옵니다.
 
-def ExpectedUsage(predictedSale, leadTime):
-    return predictedSale * leadTime
+            if monthlyData is not None and not monthlyData.empty:
+                predictedSale = predict_sale_for_item(monthlyData)  # 예측된 판매량 계산
+                inventory_df.at[index, 'predictedsale'] = round(predictedSale)  # 소수점을 반올림하여 저장
+            else:
+                inventory_df.at[index, 'predictedsale'] = 0
 
-inventory_df['expectedUsage'] = inventory_df.apply(
-    lambda row: round(ExpectedUsage(row['predictedSale'], row['leadTime']), 1), axis=1 
-)
-
-inventory_df.to_csv('Updated_Predict_InventoryData.csv', index=False, encoding='cp949')
-
-print(inventory_df[['item', 'predictedSale', 'expectedUsage']])
+    return inventory_df
